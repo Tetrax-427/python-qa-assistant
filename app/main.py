@@ -31,7 +31,7 @@ app = FastAPI(
     description="""
 AI-powered Q&A system for Python programming, grounded in Stack Overflow data.
 
-**RAG Pipeline (v3):**
+**RAG Pipeline:**
 1. Query Rewriting → cleaner retrieval query
 2. Multi-Query Generation → 3 diverse variants for broader recall  
 3. Async Parallel Retrieval → FAISS + BM25 per variant, all concurrent  

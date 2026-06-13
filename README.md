@@ -1,6 +1,6 @@
 # 🐍 Python Q&A Assistant
 
-An AI-powered question-answering system for Python programming queries, grounded in Stack Overflow data using a production-grade **RAG (Retrieval-Augmented Generation)** pipeline.
+An AI-powered question-answering system for Python programming queries, grounded in Stack Overflow data using a production-grade RAG (Retrieval-Augmented Generation) pipeline.
 
 ---
 
@@ -11,15 +11,15 @@ User Question
      ↓
 FastAPI  POST /ask
      ↓
-LRU Cache check  ──── HIT ────────────────────────→ Cached Response
+LRU Cache Check ──── HIT ──────────────────────→ Cached Response
      ↓ MISS
 Query Rewriting  (Groq)
      ↓
-Multi-Query Generation  (Groq → 3 variants)       
+Multi-Query Generation  (Groq → 3 variants)
      ↓
-Async Parallel Retrieval  (per variant)           
-  ├── FAISS semantic search  (HyDE embedding)
-  └── BM25 keyword search
+Async Parallel Retrieval  (per variant, concurrent)
+  ├── FAISS  semantic search  (HyDE embedding)
+  └── BM25   keyword search
      ↓
 RRF Fusion  (all variants merged)
      ↓
@@ -27,26 +27,26 @@ Cohere Rerank  → top-5
      ↓
 Confidence Check  (fallback if score < threshold)
      ↓
-Context Compression  (Groq strips noise)           
+Context Compression  (Groq strips noise)
      ↓
 Groq llama-3.3-70b  → Grounded Answer
      ↓
-LRU Cache store  →  Response
+LRU Cache Store  →  Response
 ```
 
 ---
 
-## 🔧 Full Stack
+## 🔧 Tech Stack
 
-| Component | Tool | Purpose |
-|---|---|---|
-| Embeddings | `all-MiniLM-L6-v2` | Semantic chunk + query embedding |
-| Vector Store | FAISS (IndexFlatIP) | Fast approximate nearest-neighbour search |
-| Keyword Search | BM25Okapi (rank-bm25) | Exact keyword / error message matching |
-| Reranker | Cohere Rerank v3 | Cross-encoder precision filter |
-| LLM | Groq llama-3.3-70b | Query rewrite, HyDE, compression, generation |
-| API | FastAPI | REST endpoints |
-| Cache | In-memory LRU (512 slots) | Instant repeat-query responses |
+| Component | Tool |
+|---|---|
+| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` |
+| Vector Store | FAISS (IndexFlatIP, persisted to disk) |
+| Keyword Search | BM25Okapi (rank-bm25) |
+| Reranker | Cohere Rerank v3 |
+| LLM | Groq `llama-3.3-70b-versatile` |
+| API Framework | FastAPI |
+| Cache | In-memory LRU (512 slots) |
 
 ---
 
@@ -56,18 +56,19 @@ LRU Cache store  →  Response
 python-qa-assistant/
 ├── app/
 │   ├── main.py          # FastAPI app — /ask, /health, /cache/stats
-│   ├── rag.py           # Full RAG pipeline
-│   ├── ingest.py        # One-time ingestion — builds FAISS + BM25
-│   └── models.py        # Pydantic request/response schemas
-├── data/                # Place Kaggle CSVs here
+│   ├── rag.py           # Core RAG pipeline
+│   ├── ingest.py        # One-time ingestion script
+│   └── models.py        # Pydantic schemas
 ├── faiss_index/         # Auto-generated after running ingest.py
 │   ├── index.faiss
 │   ├── index.pkl
 │   └── bm25.pkl
+├── data/                # Kaggle CSVs 
 ├── tests/
-│   └── test_api.py      # 40+ pytest tests
+│   └── test_api.py      # 38 pytest tests
 ├── notebooks/
 │   └── test_results.ipynb
+├── conftest.py
 ├── .env.example
 ├── requirements.txt
 └── README.md
@@ -77,31 +78,47 @@ python-qa-assistant/
 
 ## ⚙️ Setup
 
-### 1. Clone
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/Tetrax-427/python-qa-assistant.git
 cd python-qa-assistant
 ```
 
-### 2. Install dependencies
+### 2. Create and activate virtual environment
+
+```bash
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# Mac/Linux
+source venv/bin/activate
+```
+
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Environment variables
+### 4. Set up environment variables
 
 ```bash
 cp .env.example .env
-# Edit .env and fill in:
-# GROQ_API_KEY    → https://console.groq.com       
-# COHERE_API_KEY  → https://dashboard.cohere.com   
 ```
 
-### 4. Download dataset
+Fill in your API keys in `.env`:
 
-[Stack Overflow Python Questions — Kaggle](https://www.kaggle.com/datasets/stackoverflow/pythonquestions)
+```env
+GROQ_API_KEY=your_groq_api_key        # https://console.groq.com (free)
+COHERE_API_KEY=your_cohere_api_key    # https://dashboard.cohere.com (free)
+```
+
+### 5. Download the dataset
+
+Download from Kaggle: [Stack Overflow Python Questions](https://www.kaggle.com/datasets/stackoverflow/pythonquestions)
 
 Place inside `data/`:
 ```
@@ -110,16 +127,16 @@ data/
 └── Answers.csv
 ```
 
-### 5. Run ingestion (one-time)
+### 6. Run ingestion (one-time)
 
 ```bash
 python -m app.ingest
 ```
 
-Builds `faiss_index/index.faiss`, `index.pkl`, `bm25.pkl`.
-Expected time: 20–40 min for full dataset.
+Builds `faiss_index/index.faiss`, `index.pkl`, and `bm25.pkl`.
+Uses top 50k highest-voted questions for optimal quality.
 
-### 6. Start API
+### 7. Start the API
 
 ```bash
 uvicorn app.main:app --reload
@@ -133,6 +150,7 @@ uvicorn app.main:app --reload
 ## 🔌 API Reference
 
 ### `GET /health`
+
 ```json
 {
   "status": "healthy",
@@ -162,16 +180,16 @@ uvicorn app.main:app --reload
     "how to reverse a list in Python",
     "list reverse in-place vs copy Python"
   ],
-  "answer": "You can reverse a list using `list[::-1]` (returns a new list) or `list.reverse()` (in-place)...",
+  "answer": "You can reverse a list using `list[::-1]` (new list) or `.reverse()` (in-place)...",
   "sources": [
     {
-      "title": "Reverse a list in Python",
-      "score": 0.9423,
-      "snippet": "Use list.reverse() or slicing...",
+      "title": "Best way to create a reversed list in Python?",
+      "score": 0.9995,
+      "snippet": "newlist = oldlist[::-1]...",
       "quality_band": "highly-voted",
       "topics": "list, sort",
-      "answer_score": 312,
-      "question_score": 198
+      "answer_score": 120,
+      "question_score": 43
     }
   ],
   "model": "llama-3.3-70b-versatile",
@@ -181,6 +199,7 @@ uvicorn app.main:app --reload
 ```
 
 ### `GET /cache/stats`
+
 ```json
 {
   "size": 12,
@@ -198,24 +217,25 @@ uvicorn app.main:app --reload
 pytest tests/test_api.py -v
 ```
 
+38 tests covering health, schema validation, diverse queries, cache behaviour, rich metadata, and edge cases.
+
 ---
 
-## 🚀 RAG Improvements (v3 — all cumulative)
+## 🚀 RAG Pipeline — Design Decisions
 
-| # | Improvement | Where | Benefit |
-|---|---|---|---|
-| 1 | Query Rewriting | `rag.py` | Cleaner, retrieval-optimised queries |
-| 2 | HyDE | `rag.py` | Doc-to-doc embedding matching |
-| 3 | Hybrid Search (FAISS + BM25) | `rag.py` + `ingest.py` | Catches both semantic + exact keyword matches |
-| 4 | RRF Fusion | `rag.py` | Merges both ranked lists optimally |
-| 5 | Cohere Rerank | `rag.py` | Cross-encoder precision on top-20 candidates |
-| 6 | Confidence Check | `rag.py` | No hallucination on low-quality retrieval |
-| 7 | LRU Cache | `rag.py` | Instant repeat responses, lower API costs |
-| 8 | Multi-Query Generation | `rag.py` | 3 variants → broader recall (+14% retrieval accuracy) |
-| 9 | Async Parallel Retrieval | `rag.py` | All variants retrieved concurrently, lower latency |
-| 10 | Context Compression | `rag.py` | Noise-free docs → better LLM focus |
-| 11 | Contextual Chunk Headers | `ingest.py` | Quality + topic context baked into embeddings |
-| 12 | Rich Metadata | `ingest.py` | Quality band + vote scores exposed in response |
+| Technique | Why |
+|---|---|
+| **Query Rewriting** | Raw user queries are often vague — rewriting improves retrieval precision |
+| **HyDE** | Embedding a hypothetical answer instead of the query gives doc-to-doc matching, improving recall by up to 42% |
+| **Hybrid Search (FAISS + BM25)** | FAISS catches semantic similarity; BM25 catches exact keywords, error messages, function names |
+| **Multi-Query Generation** | 3 query variants cover different angles of the same question — broader recall |
+| **Async Parallel Retrieval** | All variants retrieved concurrently via ThreadPoolExecutor — lower latency |
+| **RRF Fusion** | Reciprocal Rank Fusion optimally merges multiple ranked lists |
+| **Cohere Rerank** | Cross-encoder re-scores top-20 candidates for precision — outperforms bi-encoder alone |
+| **Confidence Check** | Prevents hallucination when retrieval quality is poor |
+| **Context Compression** | Strips noise from retrieved docs before LLM sees them — better focus, less hallucination |
+| **Contextual Chunk Headers** | Quality band + topic context baked into embeddings at ingest time — zero runtime cost |
+| **LRU Cache** | Repeated queries served instantly — reduces latency and API costs |
 
 ---
 
@@ -224,9 +244,9 @@ pytest tests/test_api.py -v
 | Concern | Solution |
 |---|---|
 | Async endpoints | FastAPI async + Groq fast inference |
-| FAISS bottleneck | Replace with Pinecone / Qdrant for distributed search |
-| Repeat queries | LRU cache (in-memory) → Redis for distributed cache |
+| FAISS at scale | Replace with Pinecone / Qdrant for distributed vector search |
+| Repeated queries | Upgrade LRU cache to Redis for distributed caching |
 | LLM cost | Cache + batch similar queries |
 | Rate limits | Request queuing via Celery + Redis |
-| Horizontal scale | Docker + load balancer (Nginx) |
-| Observability | Add structured logging + Prometheus metrics |
+| Horizontal scaling | Docker + Nginx load balancer |
+| Observability | Structured logging + Prometheus metrics |

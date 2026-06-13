@@ -172,6 +172,8 @@ def load_and_merge() -> pd.DataFrame:
         how="inner",
     )
     merged.dropna(subset=["Title", "AnswerBody"], inplace=True)
+    # Cap at top 50k by question score for faster ingestion
+    merged = merged.nlargest(50000, "QuestionScore").reset_index(drop=True)
     logger.info(f"Merged dataset: {len(merged):,} rows")
     return merged
 
